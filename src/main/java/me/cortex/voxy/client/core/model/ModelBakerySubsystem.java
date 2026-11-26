@@ -3,6 +3,7 @@ package me.cortex.voxy.client.core.model;
 
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import me.cortex.voxy.common.Logger;
+import me.cortex.voxy.common.util.ThreadStallLog;
 import me.cortex.voxy.common.world.other.Mapper;
 
 import java.util.List;
@@ -26,7 +27,7 @@ public class ModelBakerySubsystem {
         this.factory = new ModelFactory(mapper, this.storage);
         this.processingThread = new Thread(()->{//TODO replace this with something good/integrate it into the async processor so that we just have less threads overall
             while (this.isRunning) {
-                while (this.factory.processAllThings());
+                while (this.isRunning && this.factory.processAllThings());
                 LockSupport.park();
             }
         }, "Model factory processor");
@@ -49,12 +50,7 @@ public class ModelBakerySubsystem {
 
     public void shutdown() {
         this.isRunning = false;
-        LockSupport.unpark(this.processingThread);
-        try {
-            this.processingThread.join();
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        ThreadStallLog.joinLoggingStalls(this.processingThread, () -> LockSupport.unpark(this.processingThread));
 
         this.factory.free();
         this.storage.free();

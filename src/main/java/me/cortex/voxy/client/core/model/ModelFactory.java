@@ -209,6 +209,9 @@ public class ModelFactory {
 
             //We need to get it twice cause of threading
             if (this.idMappings[blockId] != -1) {
+                //The bake finished between the first check and the add above, the entry just added is ours to remove.
+                // Left in, it would keep processAllThings() reporting work forever
+                this.blockStatesInFlight.remove(blockId);
                 return false;
             }
             this.bakeQueue.add(new BlockBake(blockId, blockState));

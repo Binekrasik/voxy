@@ -2,6 +2,7 @@ package me.cortex.voxy.common.thread;
 
 import me.cortex.voxy.common.Logger;
 import me.cortex.voxy.common.util.Pair;
+import me.cortex.voxy.common.util.ThreadStallLog;
 import me.cortex.voxy.common.util.TrackedObject;
 
 import java.util.Random;
@@ -87,8 +88,15 @@ public class PerThreadContextExecutor extends TrackedObject {
             throw new IllegalStateException("Tried shutting down a executor twice");
         }
         this.isLive = false;
+        long start = System.nanoTime();
+        long nextLogSeconds = 10;
         while (this.currentRunning.get() != 0) {
             Thread.onSpinWait();//TODO: maybe add a sleep or something
+            long waitedSeconds = (System.nanoTime() - start) / 1_000_000_000L;
+            if (waitedSeconds >= nextLogSeconds) {
+                nextLogSeconds *= 2;
+                ThreadStallLog.logThreadsIn("Still waiting for " + this.currentRunning.get() + " running job(s) to finish after " + waitedSeconds + "s, threads running jobs:", PerThreadContextExecutor.class, "run");
+            }
         }
         for (var ctx : this.contexts.clear()) {
             ctx.cleanup.run();

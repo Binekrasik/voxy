@@ -19,6 +19,7 @@ import me.cortex.voxy.client.core.rendering.util.UploadStream;
 import me.cortex.voxy.common.Logger;
 import me.cortex.voxy.common.util.AllocationArena;
 import me.cortex.voxy.common.util.MemoryBuffer;
+import me.cortex.voxy.common.util.ThreadStallLog;
 import me.cortex.voxy.common.util.UnsafeUtil;
 import me.cortex.voxy.common.world.WorldEngine;
 import me.cortex.voxy.common.world.WorldSection;
@@ -728,15 +729,7 @@ public class AsyncNodeManager {
             throw new IllegalStateException();
         }
         this.running = false;
-        LockSupport.unpark(this.thread);
-        try {
-            while (this.thread.isAlive()) {
-                LockSupport.unpark(this.thread);
-                this.thread.join(1000);
-            }
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        ThreadStallLog.joinLoggingStalls(this.thread, () -> LockSupport.unpark(this.thread));
 
         while (true) {
             var buffer = this.requestBatchQueue.poll();
