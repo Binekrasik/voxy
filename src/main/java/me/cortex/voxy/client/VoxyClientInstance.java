@@ -1,6 +1,5 @@
 package me.cortex.voxy.client;
 
-import me.cortex.voxy.client.compat.FlashbackCompat;
 import me.cortex.voxy.client.config.VoxyConfig;
 import me.cortex.voxy.client.core.RenderResourceReuse;
 import me.cortex.voxy.client.mixin.sodium.AccessorSodiumWorldRenderer;
@@ -23,23 +22,40 @@ public class VoxyClientInstance extends VoxyInstance {
     private final Path basePath;
     private final boolean noIngestOverride;
 
+    //The super constructor calls shouldCreateInstance(), which needs the config before this constructor can assign it
+    private static final ThreadLocal<Config> PENDING_CONFIG = new ThreadLocal<>();
+
     public VoxyClientInstance() {
-        {
-            var path = FlashbackCompat.getReplayStoragePath();
-            this.noIngestOverride = path != null;
-            if (path == null) {
-                path = getBasePath();
-            }
-            var basePath = this.basePath = path.normalize();
-            this.config = StorageConfigUtil.getCreateStorageConfig(Config.class, c->c.version==1&&c.sectionStorageConfig!=null, ()->DEFAULT_STORAGE_CONFIG, basePath);
-        }
+        this(getBasePath().normalize());
+    }
+
+    private VoxyClientInstance(Path basePath) {
+        this(basePath, loadConfig(basePath));
+    }
+
+    private VoxyClientInstance(Path basePath, Config config) {
         super();
+        PENDING_CONFIG.remove();
+        this.noIngestOverride = false;
+        this.basePath = basePath;
+        this.config = config;
         this.updateDedicatedThreads();
+    }
+
+    private static Config loadConfig(Path basePath) {
+        var config = StorageConfigUtil.getCreateStorageConfig(Config.class, c->c.version==1&&c.sectionStorageConfig!=null, ()->DEFAULT_STORAGE_CONFIG, basePath);
+        PENDING_CONFIG.set(config);
+        return config;
     }
 
     @Override
     protected boolean shouldCreateInstance() {
-        return !this.config.disabled;
+        var config = this.config != null ? this.config : PENDING_CONFIG.get();
+        if (config == null || config.disabled) {
+            PENDING_CONFIG.remove();
+            return false;
+        }
+        return true;
     }
 
     @Override

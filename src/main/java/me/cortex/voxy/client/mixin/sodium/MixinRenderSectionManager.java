@@ -12,8 +12,9 @@ import net.caffeinemc.mods.sodium.client.render.chunk.data.BuiltSectionInfo;
 import net.caffeinemc.mods.sodium.client.render.chunk.map.ChunkTrackerHolder;
 import net.caffeinemc.mods.sodium.client.render.chunk.translucent_sorting.SortBehavior;
 import net.caffeinemc.mods.sodium.client.render.viewport.Viewport;
-import net.caffeinemc.mods.sodium.client.util.FogParameters;
-import net.fabricmc.loader.api.FabricLoader;
+import net.caffeinemc.mods.sodium.client.gl.device.CommandList;
+import net.minecraft.client.Camera;
+import me.cortex.voxy.commonImpl.Platform;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.ChunkPos;
@@ -27,29 +28,23 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(value = RenderSectionManager.class, remap = false)
 public class MixinRenderSectionManager {
     @Unique
-    private static final boolean BOBBY_INSTALLED = FabricLoader.getInstance().isModLoaded("bobby");
+    private static final boolean BOBBY_INSTALLED = Platform.isModLoaded("bobby");
 
     @Shadow @Final private ClientLevel level;
 
     @Inject(method = "<init>", at = @At("TAIL"))
-    private void voxy$resetChunkTracker(ClientLevel level, int renderDistance, SortBehavior sortBehavior, CallbackInfo ci) {
-        this.bottomSectionY = this.level.getMinY()>>4;
+    private void voxy$resetChunkTracker(ClientLevel level, int renderDistance, SortBehavior sortBehavior, CommandList commandList, CallbackInfo ci) {
+        this.bottomSectionY = this.level.getMinSection();
     }
 
-    @Inject(method = "renderOutOfGraph", at = @At("HEAD"))
-    private void voxy$injectReset1(Viewport viewport, FogParameters fogParameters, CallbackInfo ci) {
-        var vrs = IVoxyRenderSystemHolder.getNullable();
-        if (vrs != null && !IrisUtil.irisShadowActive() && vrs.visbleSectionStream != null) {
-            vrs.visbleSectionStream.reset();
-        }
-    }
-
-    @Inject(method = "readRenderListFromTree", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/lists/VisibleChunkCollector;<init>(Lnet/caffeinemc/mods/sodium/client/render/chunk/region/RenderRegionManager;I)V"))
-    private void voxy$injectReset2(Viewport viewport, FogParameters fogParameters, CallbackInfo ci) {
+    //The visible section list is collected again whenever sodium rebuilds its render lists, see MixinSectionCollector
+    @Inject(method = "createTerrainRenderList", at = @At("HEAD"))
+    private void voxy$injectReset(Camera camera, Viewport viewport, int frame, boolean spectator, CallbackInfoReturnable<Boolean> cir) {
         var vrs = IVoxyRenderSystemHolder.getNullable();
         if (vrs != null && !IrisUtil.irisShadowActive() && vrs.visbleSectionStream != null) {
             vrs.visbleSectionStream.reset();
@@ -90,12 +85,12 @@ public class MixinRenderSectionManager {
     @Unique private int bottomSectionY;
 
 
-    @Redirect(method = "updateSectionInfo", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/RenderSection;setInfo(Lnet/caffeinemc/mods/sodium/client/render/chunk/data/BuiltSectionInfo;)I"))
-    private int voxy$updateOnUpload(RenderSection instance, BuiltSectionInfo info) {
-        boolean isInvisible = instance.isInvisible();
-        int changes = instance.setInfo(info);
+    @Redirect(method = "updateSectionInfo", at = @At(value = "INVOKE", target = "Lnet/caffeinemc/mods/sodium/client/render/chunk/RenderSection;setInfo(Lnet/caffeinemc/mods/sodium/client/render/chunk/data/BuiltSectionInfo;)Z"))
+    private boolean voxy$updateOnUpload(RenderSection instance, BuiltSectionInfo info) {
+        boolean isInvisible = !instance.isBuilt();
+        boolean changes = instance.setInfo(info);
         VoxyRenderSystem vrs = null;
-        if (isInvisible == instance.isInvisible() || changes == 0 || (vrs = IVoxyRenderSystemHolder.getNullable()) == null) {
+        if (isInvisible == !instance.isBuilt() || !changes || (vrs = IVoxyRenderSystemHolder.getNullable()) == null) {
             return changes;
         }
         int x = instance.getChunkX(), y = instance.getChunkY(), z = instance.getChunkZ();
@@ -104,7 +99,7 @@ public class MixinRenderSectionManager {
             var tracker = ((AccessorChunkTracker) ChunkTrackerHolder.get(this.level)).getChunkStatus();
             //in theory the cache value could be wrong but is so soso unlikely and at worst means we either duplicate ingest a chunk
             // which... could be bad ;-; or we dont ingest atall which is ok!
-            long key = ChunkPos.pack(x, z);
+            long key = ChunkPos.asLong(x, z);
             if (key != this.cachedChunkPos) {
                 this.cachedChunkPos = key;
                 this.cachedChunkStatus = tracker.getOrDefault(key, 0);

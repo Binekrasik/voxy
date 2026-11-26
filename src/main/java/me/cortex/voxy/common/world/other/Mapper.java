@@ -276,7 +276,7 @@ public class Mapper {
     }
 
     public int getIdForBiome(Holder<Biome> biome) {
-        String biomeId = biome.unwrapKey().get().identifier().toString();
+        String biomeId = biome.unwrapKey().get().location().toString();
         var entry = this.biome2biomeEntry.get(biomeId);
         if (entry == null) {
             entry = this.registerNewBiome(biomeId);
@@ -375,7 +375,7 @@ public class Mapper {
             if (state.getBlock() instanceof LeavesBlock) {
                 this.opacity = 15;
             } else {
-                this.opacity = state.getLightDampening();
+                this.opacity = state.getLightBlock(net.minecraft.world.level.EmptyBlockGetter.INSTANCE, net.minecraft.core.BlockPos.ZERO);
             }
         }
 
@@ -384,7 +384,7 @@ public class Mapper {
                 var serialized = new CompoundTag();
                 serialized.putInt("id", this.id);
                 serialized.put("block_state", BlockState.CODEC.encodeStart(NbtOps.INSTANCE, this.state).result().get());
-                serialized.putInt("version", SharedConstants.getCurrentVersion().dataVersion().version());
+                serialized.putInt("version", SharedConstants.getCurrentVersion().getDataVersion().getVersion());
                 var out = new ByteArrayOutputStream();
                 NbtIo.writeCompressed(serialized, out);
                 return out.toByteArray();
@@ -393,13 +393,13 @@ public class Mapper {
             }
         }
 
-        private static final int DATA_VERSION = SharedConstants.getCurrentVersion().dataVersion().version();
+        private static final int DATA_VERSION = SharedConstants.getCurrentVersion().getDataVersion().getVersion();
         private static final int MIN_DATA_VERSION = 4671;//Min version is 1.21.11
 
         public static StateEntry deserialize(int id, byte[] data, boolean[] forceResave) {
             try {
                 var compound = NbtIo.readCompressed(new ByteArrayInputStream(data), NbtAccounter.unlimitedHeap());
-                if (compound.getIntOr("id", -1) != id) {
+                if (me.cortex.voxy.commonImpl.NbtUtil.getIntOr(compound, "id", -1) != id) {
                     throw new IllegalStateException("Encoded id != expected id");
                 }
 
@@ -407,7 +407,7 @@ public class Mapper {
                 if (bsc == null) {
                     throw new IllegalStateException("Expected a block state but it was null: " + compound);
                 }
-                int version = compound.getIntOr("version", MIN_DATA_VERSION);
+                int version = me.cortex.voxy.commonImpl.NbtUtil.getIntOr(compound, "version", MIN_DATA_VERSION);
                 if (version != DATA_VERSION) {
                     forceResave[0] |= true;
                     Logger.info("Migrating block from version " + version + " to " + DATA_VERSION);
@@ -455,10 +455,10 @@ public class Mapper {
         public static BiomeEntry deserialize(int id, byte[] data) {
             try {
                 var compound = NbtIo.readCompressed(new ByteArrayInputStream(data), NbtAccounter.unlimitedHeap());
-                if (compound.getIntOr("id", -1) != id) {
+                if (me.cortex.voxy.commonImpl.NbtUtil.getIntOr(compound, "id", -1) != id) {
                     throw new IllegalStateException("Encoded id != expected id");
                 }
-                String biome = compound.getStringOr("biome_id", null);
+                String biome = me.cortex.voxy.commonImpl.NbtUtil.getStringOr(compound, "biome_id", null);
                 return new BiomeEntry(id, biome);
             } catch (IOException e) {
                 throw new RuntimeException(e);

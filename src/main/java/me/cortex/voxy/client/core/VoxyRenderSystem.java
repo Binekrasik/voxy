@@ -1,7 +1,7 @@
 package me.cortex.voxy.client.core;
 
-import com.mojang.renderpearl.backend.opengl.GlConst;
-import com.mojang.renderpearl.backend.opengl.GlStateManager;
+import com.mojang.blaze3d.platform.GlConst;
+import com.mojang.blaze3d.platform.GlStateManager;
 import me.cortex.voxy.client.TimingStatistics;
 import me.cortex.voxy.client.VoxyClient;
 import me.cortex.voxy.client.config.VoxyConfig;
@@ -33,7 +33,7 @@ import me.cortex.voxy.common.thread.ServiceManager;
 import me.cortex.voxy.common.util.GlobalCleaner;
 import me.cortex.voxy.common.world.WorldEngine;
 import me.cortex.voxy.commonImpl.VoxyCommon;
-import net.caffeinemc.mods.sodium.client.util.FogParameters;
+import me.cortex.voxy.client.core.rendering.FogParameters;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
@@ -92,7 +92,7 @@ public class VoxyRenderSystem {
         if (Minecraft.getInstance().options.renderDistance().get()<3) {
             String msg = "Voxy: Having a vanilla render distance of 2 can cause rare culling near the edge of your screen issues, please use 3 or more";
             Logger.warn(msg);
-            Minecraft.getInstance().gui.chatListener().handleSystemMessage(Component.literal(msg), false);
+            Minecraft.getInstance().getChatListener().handleSystemMessage(Component.literal(msg), false);
         }
 
         //Fking HATE EVERYTHING AAAAAAAAAAAAAAAA
@@ -149,8 +149,8 @@ public class VoxyRenderSystem {
             this.viewportSelector = new ViewportSelector<>(sectionRenderer::createViewport);
 
             {
-                int minSec = Minecraft.getInstance().level.getMinSectionY() >> 5;
-                int maxSec = (Minecraft.getInstance().level.getMaxSectionY() - 1) >> 5;
+                int minSec = Minecraft.getInstance().level.getMinSection() >> 5;
+                int maxSec = (Minecraft.getInstance().level.getMaxSection() - 1) >> 5;
 
                 //Do some very cheeky stuff for MiB
                 if (VoxyCommon.IS_MINE_IN_ABYSS) {//TODO: make this somehow configurable
@@ -375,11 +375,11 @@ public class VoxyRenderSystem {
             for (int i = 0; i < oldBufferBindings.length; i++) {
                 glBindBufferBase(GL_SHADER_STORAGE_BUFFER, i, oldBufferBindings[i]);
             }
-            GlStateManager._blendEquationSeparate(GL_FUNC_ADD, GL_FUNC_ADD);
+            GlStateManager._blendEquation(GL_FUNC_ADD);
             glBlendEquation(GL_FUNC_ADD);
             GlStateManager._blendFuncSeparate(0,0, 0, 0);
             glBlendFunc(0, 0);
-            GlStateManager._disableBlend(0);
+            GlStateManager._disableBlend();
             glDisable(GL_BLEND);
             GlStateManager._depthFunc(GL_LESS);
             glDepthFunc(GL_LESS);
@@ -478,7 +478,7 @@ public class VoxyRenderSystem {
     private static Matrix4f computeProjectionMat(RenderProperties properties, Matrix4fc base, float nearPlane, float farPlane) {
 
         //this jank is to capture the extra crap they inject like viewbobbing
-        var rawMCProj = Minecraft.getInstance().gameRenderer.gameRenderState().levelRenderState.cameraRenderState.projectionMatrix;
+        var rawMCProj = me.cortex.voxy.client.core.util.RawProjectionCapture.get(base);
         var extraProjection = rawMCProj.invert(new Matrix4f()).mul(base);
 
 

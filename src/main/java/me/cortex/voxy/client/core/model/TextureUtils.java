@@ -1,7 +1,6 @@
 package me.cortex.voxy.client.core.model;
 
 import net.caffeinemc.mods.sodium.client.util.color.ColorSRGB;
-import net.minecraft.util.ARGB;
 
 import java.util.Arrays;
 
@@ -278,7 +277,7 @@ public class TextureUtils {
                 r / 4,
                 g / 4,
                 b / 4,
-                darkend ? ((int) a) / 4 : ARGB.linearToSrgbChannel(a / 4)
+                darkend ? ((int) a) / 4 : ColorSRGB.linearToSrgb(a / 4, 0, 0, 0) & 0xFF
         );
     }
 

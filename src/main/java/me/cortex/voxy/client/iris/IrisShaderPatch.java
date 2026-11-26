@@ -8,7 +8,6 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import me.cortex.voxy.client.mixin.iris.DepthTransformerAccessor;
 import me.cortex.voxy.common.Logger;
 import net.irisshaders.iris.shaderpack.ShaderPack;
 import net.irisshaders.iris.shaderpack.include.AbsolutePackPath;
@@ -316,7 +315,7 @@ public class IrisShaderPatch {
 
     private static final Gson GSON = new GsonBuilder()
             .excludeFieldsWithModifiers(Modifier.PRIVATE)
-            .setStrictness(Strictness.LENIENT)
+            .setLenient()
             .create();
 
     public static IrisShaderPatch makePatch(ShaderPack ipack, AbsolutePackPath directory, Function<AbsolutePackPath, String> sourceProvider) {
@@ -422,7 +421,7 @@ public class IrisShaderPatch {
         var parser = new ASTParser();
         var transform = new SingleASTTransformer<>((translationUnit, root)->{
             root.replaceReferenceExpressions(parser, "gl_FragCoord", "(vec4(gl_FragCoord.xy,1.0-gl_FragCoord.z,gl_FragCoord.w))");
-            DepthTransformerAccessor.voxy$invertDepthReads(parser, translationUnit, root, DepthTransformerAccessor.voxy$getDepthSamplers());
+            //Minecraft 1.21.1 never uses reverse z, so depth texture reads never need inverting
         });
         return transform.transform(scr);
         //scr = scr.replaceAll("(?<!\\w)?gl_FragCoord(?=\\W|$)", "(vec4(gl_FragCoord.xy,1.0-gl_FragCoord.z,gl_FragCoord.w))");

@@ -7,7 +7,6 @@ import me.cortex.voxy.commonImpl.WorldIdentifier;
 import net.minecraft.client.multiplayer.ClientChunkCache;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ClientPacketListener;
-import net.minecraft.client.renderer.extract.LevelExtractor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.SectionPos;
@@ -33,19 +32,8 @@ public abstract class MixinClientLevel {
     @Shadow public abstract ClientChunkCache getChunkSource();
 
     @Inject(method = "<init>", at = @At("TAIL"))
-    private void voxy$getBottom(
-            final ClientPacketListener connection,
-            final ClientLevel.ClientLevelData levelData,
-            final ResourceKey<Level> dimension,
-            final Holder<DimensionType> dimensionType,
-            final int serverChunkRadius,
-            final int serverSimulationDistance,
-            final LevelExtractor levelExtractor,
-            final boolean isDebug,
-            final long biomeZoomSeed,
-            final int seaLevel,
-            CallbackInfo cir) {
-        this.bottomSectionY = ((Level)(Object)this).getMinY()>>4;
+    private void voxy$getBottom(CallbackInfo cir) {
+        this.bottomSectionY = ((Level)(Object)this).getMinSection();
     }
 
     @Inject(method = "setBlocksDirty", at = @At("TAIL"))

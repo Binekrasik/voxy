@@ -25,6 +25,9 @@ import net.minecraft.util.datafix.fixes.References;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
+import net.minecraft.core.IdMap;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.*;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
@@ -67,8 +70,8 @@ public class WorldImporter implements IDataImporter {
         this.world = worldEngine;
         this.service = sm.createService(()->new Pair<>(()->this.jobQueue.poll().run(), ()->{}), 3, "World importer", runChecker);
 
-        var biomeRegistry = mcWorld.registryAccess().lookupOrThrow(Registries.BIOME);
-        var defaultBiome = biomeRegistry.getOrThrow(Biomes.PLAINS);
+        var biomeRegistry = mcWorld.registryAccess().registryOrThrow(Registries.BIOME);
+        var defaultBiome = biomeRegistry.getHolderOrThrow(Biomes.PLAINS);
         this.defaultBiomeProvider = new PalettedContainerRO<>() {
             @Override
             public Holder<Biome> get(int x, int y, int z) {
@@ -91,18 +94,8 @@ public class WorldImporter implements IDataImporter {
             }
 
             @Override
-            public int bitsPerEntry() {
-                return 0;
-            }
-
-            @Override
             public boolean maybeHas(Predicate<Holder<Biome>> predicate) {
                 return predicate.test(defaultBiome);
-            }
-
-            @Override
-            public void forEachInPalette(Consumer<Holder<Biome>> consumer) {
-                consumer.accept(defaultBiome);
             }
 
             @Override
@@ -111,24 +104,18 @@ public class WorldImporter implements IDataImporter {
             }
 
             @Override
-            public PalettedContainer<Holder<Biome>> copy() {
-                return null;
-            }
-
-            @Override
             public PalettedContainer<Holder<Biome>> recreate() {
                 return null;
             }
 
             @Override
-            public PackedData<Holder<Biome>> pack(Strategy<Holder<Biome>> provider) {
+            public PackedData<Holder<Biome>> pack(IdMap<Holder<Biome>> idMap, PalettedContainer.Strategy strategy) {
                 return null;
             }
         };
 
-        var factory = PalettedContainerFactory.create(mcWorld.registryAccess());
-        this.biomeCodec = factory.biomeContainerCodec();
-        this.blockStateCodec = factory.blockStatesContainerCodec();
+        this.biomeCodec = PalettedContainer.codecRO(biomeRegistry.asHolderIdMap(), biomeRegistry.holderByNameCodec(), PalettedContainer.Strategy.SECTION_BIOMES, defaultBiome);
+        this.blockStateCodec = PalettedContainer.codecRW(Block.BLOCK_STATE_REGISTRY, BlockState.CODEC, PalettedContainer.Strategy.SECTION_STATES, Blocks.AIR.defaultBlockState());
     }
 
 
@@ -445,17 +432,17 @@ public class WorldImporter implements IDataImporter {
     }
 
     private void importChunkNBT(CompoundTag chunk, int regionX, int regionZ) {
-        var ver = chunk.getInt("DataVersion");
-        if (ver.isEmpty()) {
+        if (!chunk.contains("DataVersion", net.minecraft.nbt.Tag.TAG_ANY_NUMERIC)) {
             return;
         }
-        var curVer = SharedConstants.getCurrentVersion().dataVersion().version();
-        if (ver.get() != curVer) {
-            var upChunk = DataFixers.getDataFixer().update(References.CHUNK, new Dynamic<>(NbtOps.INSTANCE, chunk), ver.get(), curVer).getValue().asCompound();
-            if (upChunk.isEmpty()) {
+        int ver = chunk.getInt("DataVersion");
+        var curVer = SharedConstants.getCurrentVersion().getDataVersion().getVersion();
+        if (ver != curVer) {
+            var upChunk = DataFixers.getDataFixer().update(References.CHUNK, new Dynamic<>(NbtOps.INSTANCE, chunk), ver, curVer).getValue();
+            if (!(upChunk instanceof CompoundTag upCompound)) {
                 return;
             }
-            chunk = upChunk.get();
+            chunk = upCompound;
         }
 
 
@@ -466,22 +453,22 @@ public class WorldImporter implements IDataImporter {
         }
 
         //Dont process non full chunk sections
-        var status = ChunkStatus.byName(chunk.getStringOr("Status", null));
+        var status = ChunkStatus.byName(me.cortex.voxy.commonImpl.NbtUtil.getStringOr(chunk, "Status", "empty"));
         if (status != ChunkStatus.FULL && status != ChunkStatus.EMPTY) {//We also import empty since they are from data upgrade
             this.totalChunks.decrementAndGet();
             return;
         }
 
         try {
-            int x = chunk.getIntOr("xPos", Integer.MIN_VALUE);
-            int z = chunk.getIntOr("zPos", Integer.MIN_VALUE);
+            int x = me.cortex.voxy.commonImpl.NbtUtil.getIntOr(chunk, "xPos", Integer.MIN_VALUE);
+            int z = me.cortex.voxy.commonImpl.NbtUtil.getIntOr(chunk, "zPos", Integer.MIN_VALUE);
             if (x>>5 != regionX || z>>5 != regionZ) {
                 Logger.error("Chunk position is not located in correct region, expected: (" + regionX + ", " + regionZ+"), got: " + "(" + (x>>5) + ", " + (z>>5)+"), importing anyway");
             }
 
-            for (var sectionE : chunk.getList("sections").orElseThrow()) {
+            for (var sectionE : chunk.getList("sections", net.minecraft.nbt.Tag.TAG_COMPOUND)) {
                 var section = (CompoundTag) sectionE;
-                int y = section.getIntOr("Y", Integer.MIN_VALUE);
+                int y = me.cortex.voxy.commonImpl.NbtUtil.getIntOr(section, "Y", Integer.MIN_VALUE);
                 this.importSectionNBT(x, y, z, section);
             }
         } catch (Exception e) {
@@ -494,12 +481,12 @@ public class WorldImporter implements IDataImporter {
     private static final byte[] EMPTY = new byte[0];
     private static final ThreadLocal<VoxelizedSection> SECTION_CACHE = ThreadLocal.withInitial(VoxelizedSection::createEmpty);
     private void importSectionNBT(int x, int y, int z, CompoundTag section) {
-        if (section.getCompound("block_states").isEmpty()) {
+        if (!section.contains("block_states", net.minecraft.nbt.Tag.TAG_COMPOUND)) {
             return;
         }
 
-        byte[] blockLightData = section.getByteArray("BlockLight").orElse(EMPTY);
-        byte[] skyLightData = section.getByteArray("SkyLight").orElse(EMPTY);
+        byte[] blockLightData = section.contains("BlockLight", net.minecraft.nbt.Tag.TAG_BYTE_ARRAY) ? section.getByteArray("BlockLight") : EMPTY;
+        byte[] skyLightData = section.contains("SkyLight", net.minecraft.nbt.Tag.TAG_BYTE_ARRAY) ? section.getByteArray("SkyLight") : EMPTY;
 
         DataLayer blockLight;
         if (blockLightData.length != 0) {
@@ -515,16 +502,15 @@ public class WorldImporter implements IDataImporter {
             skyLight = null;
         }
 
-        var blockStatesRes = blockStateCodec.parse(NbtOps.INSTANCE, section.getCompound("block_states").get());
+        var blockStatesRes = blockStateCodec.parse(NbtOps.INSTANCE, section.getCompound("block_states"));
         if (!blockStatesRes.hasResultOrPartial()) {
             //TODO: if its only partial, it means should try to upgrade the nbt format with datafixerupper probably
             return;
         }
         var blockStates = blockStatesRes.getPartialOrThrow();
         var biomes = this.defaultBiomeProvider;
-        var optBiomes = section.getCompound("biomes");
-        if (optBiomes.isPresent()) {
-            biomes = this.biomeCodec.parse(NbtOps.INSTANCE, optBiomes.get()).result().orElse(this.defaultBiomeProvider);
+        if (section.contains("biomes", net.minecraft.nbt.Tag.TAG_COMPOUND)) {
+            biomes = this.biomeCodec.parse(NbtOps.INSTANCE, section.getCompound("biomes")).result().orElse(this.defaultBiomeProvider);
         }
         VoxelizedSection csec = WorldConversionFactory.convert(
                 SECTION_CACHE.get().setPosition(x, y, z),

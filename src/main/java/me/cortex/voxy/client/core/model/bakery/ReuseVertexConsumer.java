@@ -3,10 +3,8 @@ package me.cortex.voxy.client.core.model.bakery;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import me.cortex.voxy.common.util.MemoryBuffer;
-import net.minecraft.client.model.geom.builders.UVPair;
-import net.minecraft.client.renderer.chunk.ChunkSectionLayer;
-import net.minecraft.client.renderer.texture.MipmapStrategy;
-import net.minecraft.client.resources.model.geometry.BakedQuad;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.core.Direction;
 import org.lwjgl.system.MemoryUtil;
 
@@ -62,11 +60,6 @@ public final class ReuseVertexConsumer implements VertexConsumer {
     }
 
     @Override
-    public VertexConsumer setColor(int i) {
-        return this;
-    }
-
-    @Override
     public ReuseVertexConsumer setUv(float u, float v) {
         MemoryUtil.memPutFloat(this.ptr + 16, u);
         MemoryUtil.memPutFloat(this.ptr + 20, v);
@@ -84,39 +77,32 @@ public final class ReuseVertexConsumer implements VertexConsumer {
     }
 
     @Override
-    public ReuseVertexConsumer setUv3(float u, float v) { return this; }
-
-    @Override
     public ReuseVertexConsumer setNormal(float x, float y, float z) {
         return this;
     }
 
-    @Override
-    public ReuseVertexConsumer setLineWidth(float f) {
-        return this;
+    public ReuseVertexConsumer quad(BakedQuad quad, RenderType layer) {
+        return this.quad(quad, layer, false);
     }
 
-    public ReuseVertexConsumer quad(BakedQuad quad) {
-        return this.quad(quad, false);
-    }
-
-    public ReuseVertexConsumer quad(BakedQuad quad, boolean forceSolid) {
+    public ReuseVertexConsumer quad(BakedQuad quad, RenderType layer, boolean forceSolid) {
         int meta = 0;
-        meta |= forceSolid?0:(quad.materialInfo().layer()!=ChunkSectionLayer.SOLID?1:0);//has discard
-        meta |= quad.materialInfo().isTinted()?4:0;//has tinting
+        meta |= forceSolid?0:(layer!=RenderType.solid()?1:0);//has discard
+        meta |= quad.isTinted()?4:0;//has tinting
         return this.quad(quad, meta);
     }
 
+    //Vertex layout of DefaultVertexFormat.BLOCK, which BakedQuad vertex data uses
+    private static final int QUAD_VERTEX_INTS = 8;
     public ReuseVertexConsumer quad(BakedQuad quad, int metadata) {
-        //TODO: FIXME: this is wrong, e.g. stuff becomes conditionally shaded, e.g. the shade comes from the override pretty sure
-        this.anyShaded |= quad.materialInfo().shadeDirectionOverride() == null;
-        this.anyDarkendTex |= quad.materialInfo().sprite().contents().mipmapStrategy == MipmapStrategy.DARK_CUTOUT;
+        this.anyShaded |= quad.isShade();
+        //Minecraft 1.21.1 has no darkened cutout mipmap strategy, so anyDarkendTex stays false
         this.ensureCanPut();
+        int[] data = quad.getVertices();
         for (int i = 0; i < 4; i++) {
-            var pos = quad.position(i);
-            this.addVertex(pos.x(), pos.y(), pos.z());
-            long puv = quad.packedUV(i);
-            this.setUv(UVPair.unpackU(puv),UVPair.unpackV(puv));
+            int base = i * QUAD_VERTEX_INTS;
+            this.addVertex(Float.intBitsToFloat(data[base]), Float.intBitsToFloat(data[base + 1]), Float.intBitsToFloat(data[base + 2]));
+            this.setUv(Float.intBitsToFloat(data[base + 4]), Float.intBitsToFloat(data[base + 5]));
 
             this.meta(metadata|this.globalOrMetadata);
         }

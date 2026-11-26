@@ -1,8 +1,6 @@
 package me.cortex.voxy.client.core;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.renderpearl.api.pipeline.CompareOp;
-import com.mojang.renderpearl.api.pipeline.DepthStencilState;
 import me.cortex.voxy.client.core.gl.shader.Shader;
 import me.cortex.voxy.client.core.util.IrisUtil;
 import me.cortex.voxy.client.iris.IGetIrisVoxyPipelineData;
@@ -61,12 +59,13 @@ public record RenderProperties(boolean isZero2One, boolean isReverseZ, boolean u
 
     private static boolean useReverseZ() {
         //if (IrisUtil.irisShaderPackEnabled()) return false;
-        return DepthStencilState.DEFAULT.depthTest().equals(CompareOp.GREATER_THAN_OR_EQUAL);
+        //Minecraft 1.21.1 always uses a standard (non reversed) depth buffer
+        return false;
     }
 
     public static RenderProperties getRenderProperties() {
         RenderProperties properties = new RenderProperties(
-                RenderSystem.getDevice().getDeviceInfo().isZZeroToOne(),
+                false,
                 useReverseZ(),
                 false);
 

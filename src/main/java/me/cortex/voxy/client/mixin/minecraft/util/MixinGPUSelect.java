@@ -11,7 +11,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Minecraft.class)
 public class MixinGPUSelect {
-    @Inject(method = "<init>", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/Options;save()V", ordinal = 0))
+    //NeoForge creates the window and GL context in its early loading screen, before Minecraft is constructed,
+    // so voxy.forceGpuSelectionIndex only has an effect if the early window is disabled in fml.toml
+    @Inject(method = "<init>", at = @At("TAIL"))
     private void voxy$injectInitWindow(GameConfig gc, CallbackInfo ci) {
         //System.load("C:\\Program Files\\RenderDoc\\renderdoc.dll");
         var prop = System.getProperty("voxy.forceGpuSelectionIndex", "NO");
